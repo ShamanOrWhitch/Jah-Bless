@@ -9,32 +9,37 @@ GlobalVariable Property MusicVolume Auto
 GlobalVariable Property RadioEnabled Auto
 
 Event OnLoad()
-    ; Устанавливаем громкость музыки по умолчанию
-    MusicVolume.SetValue(0.5)  ; Например, устанавливаем громкость на половину от максимальной
+    ; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
+    MusicVolume.SetValue(0.5)  ; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ
 
-    ; Включаем радио, если bRadioOn = true
+    ; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ bRadioOn = true
     If (bRadioOn && !self.IsDead())
         self.MakeRadioReceiver(radioFreq, radioVol, radioOutputModel, True)
     Else
-        ; Выключаем радио, если bRadioOn = false
+        ; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ, пїЅпїЅпїЅпїЅ bRadioOn = false
         self.MakeRadioReceiver(radioFreq, radioVol, radioOutputModel, False)
     EndIf
 EndEvent
 
 Event OnActivate(ObjectReference akActionRef)
-    ; При активации бота включаем или выключаем звук
+    ; Sneak + activate: companion on the bot that is already here. Does not spawn anyone.
+    if akActionRef == Game.GetPlayer() && Game.GetPlayer().IsSneaking()
+        self.SetCompanion(!self.IsPlayerTeammate(), true)
+        return
+    endif
+    ; пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
     bRadioOn = !bRadioOn
     If (bRadioOn)
-        RadioEnabled.SetValue(0)  ; Выключаем радио
+        RadioEnabled.SetValue(0)  ; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
         self.MakeRadioReceiver(radioFreq, radioVol, radioOutputModel, True)
     Else
-        RadioEnabled.SetValue(1)  ; Включаем радио
+        RadioEnabled.SetValue(1)  ; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
         self.MakeRadioReceiver(radioFreq, radioVol, radioOutputModel, False)
     EndIf
 EndEvent
 
 Event OnDeath(Actor akKiller)
-    ; Выключаем радио при смерти бота
-    RadioEnabled.SetValue(1)  ; Включаем радио
+    ; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅ
+    RadioEnabled.SetValue(1)  ; пїЅпїЅпїЅпїЅпїЅпїЅпїЅпїЅ пїЅпїЅпїЅпїЅпїЅ
 EndEvent
 Float Property iRadioMusicVolume Auto Const
