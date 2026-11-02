@@ -58,8 +58,8 @@ jobs:
                   "wave": data[8:12].decode("ascii", "replace") if len(data) >= 12 else "",
                   "chunks": [],
               }
-              if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
-                  out["error"] = "Not a RIFF/WAVE container"
+              if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"XWMA":
+                  out["error"] = "Not a RIFF/XWMA container"
                   return out
               pos = 12
               fmt = None
