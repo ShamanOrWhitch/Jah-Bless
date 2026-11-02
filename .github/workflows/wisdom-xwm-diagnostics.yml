@@ -1,0 +1,168 @@
+name: Wisdom XWM diagnostics
+
+on:
+  push:
+    branches:
+      - wisdom-audio-diagnostics
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  inspect:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository history
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Inspect XWM containers and compare the converted revision
+        shell: bash
+        run: |
+          python3 - <<'PY'
+          import hashlib, json, pathlib, struct, subprocess
+
+          FILES = [
+              "Sound/fx/mus/radio/Wisdom/413 - Wolk I Semero Swiniej.xwm",
+              "Sound/fx/mus/radio/Wisdom/601 - Boltunec.xwm",
+              "Sound/fx/mus/radio/Wisdom/602 - Burkulyoz.xwm",
+              "Sound/fx/mus/radio/Wisdom/604 - Zamorochki.xwm",
+              "Sound/fx/mus/radio/Wisdom/605 - Izmenki.xwm",
+              "Sound/fx/mus/radio/Wisdom/606 - Molchok.xwm",
+              "Sound/fx/mus/radio/Wisdom/607 - Oblom.xwm",
+              "Sound/fx/mus/radio/Wisdom/608 - Svinya.xwm",
+              "Sound/fx/mus/radio/Wisdom/609 - Scrooge.xwm",
+              "Sound/fx/mus/radio/Wisdom/610 - Stremak.xwm",
+              "Sound/fx/mus/radio/Wisdom/612 - Tupak.xwm",
+              "Sound/fx/mus/radio/JahBlessRadio/1.xwm",
+              "Sound/fx/mus/radio/JahBlessRadio/jah bless.xwm",
+          ]
+          CONVERTED = "38d50eeb0a75ba39e17443afb06f163ba731259f"
+
+          def read_git(rev, path):
+              try:
+                  return subprocess.check_output(
+                      ["git", "show", f"{rev}:{path}"],
+                      stderr=subprocess.DEVNULL
+                  )
+              except subprocess.CalledProcessError:
+                  return None
+
+          def inspect(data):
+              out = {
+                  "bytes": len(data),
+                  "sha256": hashlib.sha256(data).hexdigest(),
+                  "riff": data[:4].decode("ascii", "replace") if len(data) >= 4 else "",
+                  "wave": data[8:12].decode("ascii", "replace") if len(data) >= 12 else "",
+                  "chunks": [],
+              }
+              if len(data) < 12 or data[:4] != b"RIFF" or data[8:12] != b"WAVE":
+                  out["error"] = "Not a RIFF/WAVE container"
+                  return out
+              pos = 12
+              fmt = None
+              dpds = None
+              data_size = None
+              while pos + 8 <= len(data):
+                  tag = data[pos:pos+4]
+                  size = struct.unpack_from("<I", data, pos + 4)[0]
+                  begin, end = pos + 8, pos + 8 + size
+                  if end > len(data):
+                      out["error"] = f"Chunk {tag!r} exceeds file length"
+                      break
+                  out["chunks"].append({"tag": tag.decode("ascii", "replace"), "size": size})
+                  if tag == b"fmt " and size >= 16:
+                      fields = struct.unpack_from("<HHIIHH", data, begin)
+                      fmt = {
+                          "format_tag": fields[0],
+                          "channels": fields[1],
+                          "sample_rate": fields[2],
+                          "avg_bytes_per_sec": fields[3],
+                          "block_align": fields[4],
+                          "bits_per_sample": fields[5],
+                          "cb_size": struct.unpack_from("<H", data, begin + 16)[0] if size >= 18 else None,
+                      }
+                  elif tag == b"dpds":
+                      vals = size // 4
+                      dpds = list(struct.unpack_from("<" + "I" * vals, data, begin)) if vals else []
+                      if size % 4:
+                          out["dpds_size_not_multiple_of_4"] = size
+                  elif tag == b"data":
+                      data_size = size
+                  pos = end + (size & 1)
+              out["fmt"] = fmt
+              out["data_bytes"] = data_size
+              out["dpds_entries"] = len(dpds) if dpds is not None else None
+              if dpds is not None and dpds:
+                  out["dpds_first"] = dpds[0]
+                  out["dpds_last"] = dpds[-1]
+                  out["dpds_strictly_increasing"] = all(a < b for a, b in zip(dpds, dpds[1:]))
+                  out["dpds_step_min"] = min((b-a for a,b in zip(dpds, dpds[1:])), default=None)
+                  out["dpds_step_max"] = max((b-a for a,b in zip(dpds, dpds[1:])), default=None)
+              if fmt and data_size is not None and fmt["block_align"]:
+                  out["data_packet_count_floor"] = data_size // fmt["block_align"]
+                  out["data_packet_count_remainder"] = data_size % fmt["block_align"]
+                  if dpds is not None:
+                      out["dpds_vs_packet_count"] = len(dpds) - ((data_size + fmt["block_align"] - 1) // fmt["block_align"])
+                  bytes_per_frame = (fmt["channels"] * fmt["bits_per_sample"]) // 8
+                  if dpds and fmt["sample_rate"] and bytes_per_frame:
+                      out["decoded_duration_seconds_est"] = round(dpds[-1] / bytes_per_frame / fmt["sample_rate"], 3)
+              return out
+
+          report = {
+              "branch": subprocess.check_output(["git", "branch", "--show-current"], text=True).strip(),
+              "head": subprocess.check_output(["git", "rev-parse", "HEAD"], text=True).strip(),
+              "converted_commit": CONVERTED,
+              "files": {},
+          }
+
+          for path in FILES:
+              current = pathlib.Path(path).read_bytes() if pathlib.Path(path).exists() else None
+              if current is None:
+                  report["files"][path] = {"error": "Missing at HEAD"}
+                  continue
+              item = {"current": inspect(current)}
+              converted = read_git(CONVERTED, path)
+              if converted is not None:
+                  item["converted_revision"] = inspect(converted)
+                  item["same_as_converted_revision"] = current == converted
+              else:
+                  item["converted_revision"] = {"error": "No file at converted revision"}
+              parent = subprocess.check_output(["git", "rev-parse", f"{CONVERTED}^"], text=True).strip()
+              original = read_git(parent, path)
+              if original is not None:
+                  item["pre_conversion_revision"] = inspect(original)
+                  item["same_as_pre_conversion_revision"] = current == original
+              item["converted_parent"] = parent
+              report["files"][path] = item
+
+          pathlib.Path("wisdom-xwm-report.json").write_text(
+              json.dumps(report, indent=2, ensure_ascii=False) + "\n",
+              encoding="utf-8"
+          )
+          print(json.dumps(report, indent=2, ensure_ascii=False))
+          with open("/tmp/summary.md", "w", encoding="utf-8") as f:
+              f.write("# Wisdom XWM diagnostics\n\n")
+              for path, item in report["files"].items():
+                  cur = item.get("current", {})
+                  fmt = cur.get("fmt") or {}
+                  f.write(f"## {path}\n\n")
+                  f.write(f"- Bytes: {cur.get('bytes')}\n")
+                  f.write(f"- Format tag: {fmt.get('format_tag')}\n")
+                  f.write(f"- Channels / rate: {fmt.get('channels')} / {fmt.get('sample_rate')} Hz\n")
+                  f.write(f"- Block align: {fmt.get('block_align')}\n")
+                  f.write(f"- Data bytes / packets: {cur.get('data_bytes')} / {cur.get('data_packet_count_floor')}\n")
+                  f.write(f"- dpds entries / delta from packet count: {cur.get('dpds_entries')} / {cur.get('dpds_vs_packet_count')}\n")
+                  f.write(f"- dpds increasing: {cur.get('dpds_strictly_increasing')}\n")
+                  f.write(f"- Estimated decoded duration: {cur.get('decoded_duration_seconds_est')} s\n\n")
+          PY
+          cat /tmp/summary.md >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload machine-readable report
+        uses: actions/upload-artifact@v4
+        with:
+          name: wisdom-xwm-diagnostics
+          path: wisdom-xwm-report.json
+          if-no-files-found: error
