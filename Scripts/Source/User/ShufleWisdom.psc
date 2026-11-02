@@ -1,25 +1,21 @@
 Scriptname ShufleWisdom extends Quest Conditional
 
-; Wisdom: 11 файлов, индексы 0..10.
-; Сцена должна смотреть на Ictrack. Частоту не менять.
-Int Property Ictrack = 0 Auto Conditional
-Int Property iPtrack = -1 Auto Conditional
-Int Property iPPrev = -1 Auto Conditional
+; Copy of the working Jah Bless randomizer.
+; Same property the scene already checks: ::iCurrentTrack_var.
+; Wisdom has 11 tracks, so the roll is 0..10, not 0..49.
+Int Property iCurrentTrack = 0 Auto Conditional
+Int Property iPrevTrack = 0 Auto Conditional
+Int Property iPrevPrevTrack = 0 Auto Conditional
 
 Function Randomize()
-    int n = Ictrack
-    int guard = 0
-    while guard < 8
-        n = Utility.RandomInt(0, 10)
-        if (n != iPtrack && n != iPPrev)
-            iPPrev = iPtrack
-            iPtrack = Ictrack
-            Ictrack = n
-            return
-        endif
-        guard += 1
-    endwhile
-    iPPrev = iPtrack
-    iPtrack = Ictrack
-    Ictrack = n
+    iCurrentTrack = Utility.RandomInt(0, 10)
+    if (iCurrentTrack == iPrevTrack)
+        Self.Randomize()
+    ElseIf (iCurrentTrack == iPrevPrevTrack)
+        iPrevPrevTrack = iCurrentTrack
+        Self.Randomize()
+    Else
+        iPrevPrevTrack = iPrevTrack
+        iPrevTrack = iCurrentTrack
+    EndIf
 EndFunction
